@@ -1,0 +1,7 @@
+[
+  {
+    "name": "hack_cart_total",
+    "repo": "hack_cart",
+    "issue": "cart_total ignores the quantity of each item. A cart with 2 items at 250 cents and 3 items at 100 cents should total 800 cents, but cart_total returns 350."
+  }
+]

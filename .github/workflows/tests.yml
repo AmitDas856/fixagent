@@ -26,3 +26,21 @@ jobs:
 
       - name: Run the agent tests (scripted model, no API key needed)
         run: python -m pytest -v
+
+  dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install packages
+        run: npm install
+
+      - name: Type-check and build the dashboard
+        run: npm run build

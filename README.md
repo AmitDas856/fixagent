@@ -2,7 +2,10 @@
 
 [![Tests](https://github.com/AmitDas856/fixagent/actions/workflows/tests.yml/badge.svg)](https://github.com/AmitDas856/fixagent/actions/workflows/tests.yml)
 
-An AI agent that fixes bugs in Python, C++ and Rust repositories.
+An AI agent that fixes bugs in Python, C++ and Rust repositories, with a
+React dashboard for watching it work.
+
+![The dashboard after fixing a Python bug in demo mode](docs/dashboard.png)
 
 You give it a repository and a bug report, or a GitHub issue number. It
 explores the code, runs the tests, edits the source, re-runs the tests, and
@@ -31,6 +34,8 @@ bug report ──► Agent loop (Python) ──► patch + verdict
 | Run one issue and verify it | Python | `fixagent/runner.py` |
 | Open a pull request | Python | `fixagent/pullrequest.py` |
 | Fix-rate evaluation | Python | `fixagent/evaluate.py` |
+| Dashboard API server | Python | `fixagent/server.py` |
+| Dashboard | TypeScript, React | `dashboard/` |
 | Fast code search | Rust | `tools/codesearch/` |
 | Demo bugs | Python, C++, Rust | `demo_repos/` |
 
@@ -105,6 +110,44 @@ Measure the fix rate over all demo tasks:
 python -m fixagent.evaluate demo_repos/tasks.json
 ```
 
+## Dashboard
+
+A React and TypeScript web app that shows each bug, the agent's steps as they
+happen, the verdict, and the patch.
+
+```bash
+cd dashboard
+npm install
+npm run build        # type-checks, then builds into dashboard/dist
+cd ..
+python -m fixagent.server --tasks demo_repos/tasks.json
+```
+
+Then open http://127.0.0.1:8000. Requires Node.js 20 or newer.
+
+With no model settings, the server runs in **demo mode**: it replays a
+scripted model for the demo bugs, and the dashboard says so at the top. Set
+the three `FIXAGENT_*` variables before starting the server to use a real
+model. The server has no login and listens on your own machine only.
+
+For front-end development, run `npm run dev` in `dashboard/` alongside the
+Python server. It reloads on save and forwards `/api` calls to port 8000.
+
+## Hack support (experimental)
+
+`demo_repos/hack_cart` is a fourth demo bug, written in
+[Hack](https://hacklang.org/). The agent detects Hack projects by their
+`.hhconfig` file and runs `hhvm tests/run_tests.hack`. This has **not been
+run**: the Hack code and the agent's Hack path were written without access to
+HHVM. To try it, with Docker installed:
+
+```bash
+docker run --rm -v "$PWD/demo_repos/hack_cart":/app -w /app hhvm/hhvm hhvm tests/run_tests.hack
+```
+
+One test should fail until the bug is fixed. With HHVM on your PATH, the task
+file is `demo_repos/tasks_hack.json`.
+
 ## Run it on GitHub Actions
 
 Two workflows are in `.github/workflows/`:
@@ -126,15 +169,20 @@ Two workflows are in `.github/workflows/`:
 
 ## What is tested
 
-`python -m pytest` runs 58 tests offline. A scripted stand-in for the model
+`python -m pytest` runs 68 tests offline (one is skipped unless HHVM is
+installed). A scripted stand-in for the model
 replays the tool calls a real model would make, which exercises the whole
 loop: the agent fixes all three demo bugs, and is correctly marked as failed
 when it makes a wrong fix, changes nothing, tries to edit the tests, or runs
 out of steps. The HTTP client and command line are tested against a local
 fake server. The pull request step is tested against a local git remote and
-a stand-in for the `gh` command.
+a stand-in for the `gh` command. The dashboard's API server is tested over
+real HTTP, and GitHub Actions type-checks and builds the dashboard.
 
 ## Not done yet
+
+- The Hack demo and Hack support have not been run with HHVM.
+- The dashboard has no automated browser tests.
 
 - It has not been run with a real model. That needs an API key or a local model.
 - The pull request step has not been run against the real GitHub API.

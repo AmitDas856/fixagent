@@ -19,7 +19,9 @@ IGNORED_DIRS = {
 
 
 def detect_language(repo: Path) -> str:
-    """Return "rust", "cpp", "python" or "unknown" for a repository."""
+    """Return "hack", "rust", "cpp", "python" or "unknown" for a repository."""
+    if (repo / ".hhconfig").exists():
+        return "hack"
     if (repo / "Cargo.toml").exists():
         return "rust"
     if (repo / "Makefile").exists() or (repo / "CMakeLists.txt").exists():
@@ -32,6 +34,9 @@ def detect_language(repo: Path) -> str:
 def default_test_command(repo: Path) -> list[str]:
     """Pick the command that runs the repository's tests."""
     language = detect_language(repo)
+    if language == "hack":
+        # Convention used here: a Hack entry point at tests/run_tests.hack.
+        return ["hhvm", "tests/run_tests.hack"]
     if language == "rust":
         return ["cargo", "test", "--quiet"]
     if language == "cpp":

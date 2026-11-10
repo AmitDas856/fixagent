@@ -7,38 +7,10 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from fixagent.demo import DEMO_SCRIPTS as SCRIPTS  # noqa: E402
+from fixagent.demo import MEDIAN_FIX  # noqa: E402,F401
+
 DEMO_REPOS = PROJECT_ROOT / "demo_repos"
-
-# The scripted "model" for each demo task: the tool calls a real model would be
-# expected to make. These let the full loop run offline.
-MEDIAN_FIX = (
-    "    middle = len(ordered) // 2\n    return ordered[middle]",
-    "    middle = len(ordered) // 2\n"
-    "    if len(ordered) % 2 == 0:\n"
-    "        return (ordered[middle - 1] + ordered[middle]) / 2\n"
-    "    return ordered[middle]",
-)
-TRIM_FIX = ("last - first);", "last - first + 1);")
-WORDCOUNT_FIX = ("text.split(' ').count()", "text.split_whitespace().count()")
-
-
-def script_for(file: str, old: str, new: str, summary: str) -> list:
-    return [
-        [("run_tests", {})],
-        [("read_file", {"path": file})],
-        [("edit_file", {"path": file, "old_text": old, "new_text": new})],
-        [("run_tests", {})],
-        [("finish", {"summary": summary})],
-    ]
-
-
-SCRIPTS = {
-    "py_stats_median": script_for("stats.py", *MEDIAN_FIX, "Averaged the two middle values."),
-    "cpp_strutil_trim": script_for("strutil.cpp", *TRIM_FIX, "Fixed off-by-one in substr length."),
-    "rs_wordcount_spaces": script_for(
-        "src/lib.rs", *WORDCOUNT_FIX, "Split on any whitespace."
-    ),
-}
 
 
 @pytest.fixture

@@ -31,6 +31,8 @@ ALLOWED_COMMANDS = {
     "gcc",
     "clang++",
     "rustc",
+    "hhvm",
+    "hh_client",
 }
 
 

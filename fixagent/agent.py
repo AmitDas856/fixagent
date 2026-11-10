@@ -5,13 +5,14 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 from .llm import LLM, LLMResponse
 from .tools import Toolbox
 
 SYSTEM_PROMPT = """\
 You are a software engineer fixing a bug in a code repository. The repository
-may be written in Python, C++ or Rust.
+may be written in Python, C++, Rust or Hack.
 
 Work in this order:
 1. Explore: list the files, then read the code and tests related to the issue.
@@ -46,11 +47,13 @@ class Agent:
         toolbox: Toolbox,
         max_steps: int = 30,
         log_path: Path | None = None,
+        on_event: Callable[[dict], None] | None = None,
     ) -> None:
         self.llm = llm
         self.toolbox = toolbox
         self.max_steps = max_steps
         self.log_path = log_path
+        self.on_event = on_event
 
     def run(self, issue: str) -> AgentRun:
         run = AgentRun()
@@ -138,6 +141,8 @@ class Agent:
 
     def _record(self, run: AgentRun, event: dict) -> None:
         run.events.append(event)
+        if self.on_event:
+            self.on_event(event)
         if self.log_path:
             with self.log_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(event) + "\n")

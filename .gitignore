@@ -7,3 +7,5 @@ build/
 fix.patch
 eval_results.json
 *.jsonl
+node_modules/
+dist/

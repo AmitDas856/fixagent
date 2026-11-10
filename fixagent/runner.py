@@ -14,6 +14,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from .agent import Agent, AgentRun
 from .languages import IGNORED_DIRS, default_test_command, detect_language
@@ -52,6 +53,7 @@ def fix_issue(
     workdir: Path | None = None,
     log_path: Path | None = None,
     timeout: float = 180.0,
+    on_event: Callable[[dict], None] | None = None,
 ) -> FixResult:
     repo = Path(repo).resolve()
     if not repo.is_dir():
@@ -67,7 +69,9 @@ def fix_issue(
 
     started = time.monotonic()
     passed_before, _ = toolbox.tests_pass()
-    run = Agent(llm, toolbox, max_steps=max_steps, log_path=log_path).run(issue)
+    run = Agent(
+        llm, toolbox, max_steps=max_steps, log_path=log_path, on_event=on_event
+    ).run(issue)
     passed_after, output = toolbox.tests_pass()
     # Only files the agent wrote go in the patch, so build by-products such as
     # lock files and compiled programs never end up in it.
