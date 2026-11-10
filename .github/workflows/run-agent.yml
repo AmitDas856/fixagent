@@ -1,0 +1,55 @@
+name: Run agent with a real model
+
+# Start this by hand from the Actions tab. It needs three repository secrets:
+#   FIXAGENT_BASE_URL, FIXAGENT_MODEL, FIXAGENT_API_KEY
+# Add them under Settings > Secrets and variables > Actions.
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_steps:
+        description: Maximum steps per bug
+        default: "30"
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    env:
+      FIXAGENT_BASE_URL: ${{ secrets.FIXAGENT_BASE_URL }}
+      FIXAGENT_MODEL: ${{ secrets.FIXAGENT_MODEL }}
+      FIXAGENT_API_KEY: ${{ secrets.FIXAGENT_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check the model settings are present
+        run: |
+          if [ -z "$FIXAGENT_BASE_URL" ] || [ -z "$FIXAGENT_MODEL" ]; then
+            echo "::error::Add the FIXAGENT_BASE_URL, FIXAGENT_MODEL and FIXAGENT_API_KEY secrets first."
+            exit 1
+          fi
+
+      - name: Build the Rust search tool
+        working-directory: tools/codesearch
+        run: cargo build --release
+
+      - name: Run the agent on the demo bugs
+        run: |
+          python -m fixagent.evaluate demo_repos/tasks.json \
+            --max-steps "${{ inputs.max_steps }}" | tee report.txt
+          {
+            echo '## Agent results'
+            echo '```'
+            cat report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: |
+            eval_results.json
+            report.txt
