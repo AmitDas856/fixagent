@@ -1,0 +1,10 @@
+[package]
+name = "codesearch"
+version = "0.1.0"
+edition = "2021"
+description = "Fast literal code search used by fixagent"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3

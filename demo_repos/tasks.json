@@ -1,0 +1,17 @@
+[
+  {
+    "name": "py_stats_median",
+    "repo": "py_stats",
+    "issue": "median() returns the wrong value for lists with an even number of items. For example median([4, 1, 3, 2]) returns 3, but the median should be 2.5, the average of the two middle values."
+  },
+  {
+    "name": "cpp_strutil_trim",
+    "repo": "cpp_strutil",
+    "issue": "strutil::trim cuts off the last character of the text. trim(\"  hello  \") returns \"hell\" instead of \"hello\", and trim(\"x\") returns an empty string."
+  },
+  {
+    "name": "rs_wordcount_spaces",
+    "repo": "rs_wordcount",
+    "issue": "word_count gives wrong results when words are separated by more than one space, or by tabs or newlines. word_count(\"the  quick   brown fox\") returns 7 instead of 4, and word_count(\"\") returns 1 instead of 0."
+  }
+]
