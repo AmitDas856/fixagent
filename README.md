@@ -1,5 +1,7 @@
 # fixagent
 
+[![Tests](https://github.com/AmitDas856/fixagent/actions/workflows/tests.yml/badge.svg)](https://github.com/AmitDas856/fixagent/actions/workflows/tests.yml)
+
 An AI agent that fixes bugs in Python, C++ and Rust repositories.
 
 You give it a repository and a bug report. It explores the code, runs the
@@ -50,6 +52,9 @@ Requirements: Python 3.10+, and for the C++ and Rust demos `g++`, `make` and
 `cargo`.
 
 ```bash
+git clone https://github.com/AmitDas856/fixagent.git
+cd fixagent
+
 # optional: build the Rust search tool (the agent falls back to Python without it)
 cd tools/codesearch && cargo build --release && cd ../..
 
@@ -86,6 +91,17 @@ Measure the fix rate over all demo tasks:
 ```bash
 python -m fixagent.evaluate demo_repos/tasks.json
 ```
+
+## Run it on GitHub Actions
+
+Two workflows are in `.github/workflows/`:
+
+- **Tests** runs on every push. It builds the Rust tool and runs the test
+  suite with the scripted model, so it needs no API key.
+- **Run agent with a real model** is started by hand from the Actions tab. Add
+  `FIXAGENT_BASE_URL`, `FIXAGENT_MODEL` and `FIXAGENT_API_KEY` under
+  Settings > Secrets and variables > Actions first. It prints the fix-rate
+  table on the run page and saves the results as a download.
 
 ## Demo bugs
 
