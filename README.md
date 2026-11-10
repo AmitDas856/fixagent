@@ -4,8 +4,9 @@
 
 An AI agent that fixes bugs in Python, C++ and Rust repositories.
 
-You give it a repository and a bug report. It explores the code, runs the
-tests, edits the source, re-runs the tests, and hands back a patch. The result
+You give it a repository and a bug report, or a GitHub issue number. It
+explores the code, runs the tests, edits the source, re-runs the tests, and
+hands back a patch or opens a pull request. The result
 is checked independently: a fix only counts if the tests fail before the agent
 runs and pass after it.
 
@@ -28,6 +29,7 @@ bug report ──► Agent loop (Python) ──► patch + verdict
 | Tools and sandbox rules | Python | `fixagent/tools.py` |
 | LLM client | Python | `fixagent/llm.py` |
 | Run one issue and verify it | Python | `fixagent/runner.py` |
+| Open a pull request | Python | `fixagent/pullrequest.py` |
 | Fix-rate evaluation | Python | `fixagent/evaluate.py` |
 | Fast code search | Rust | `tools/codesearch/` |
 | Demo bugs | Python, C++, Rust | `demo_repos/` |
@@ -86,6 +88,17 @@ python -m fixagent \
   --out fix.patch --log run.jsonl
 ```
 
+Fix a GitHub issue and open a pull request for it:
+
+```bash
+python -m fixagent --repo path/to/your/checkout --github-issue 12 --open-pr
+```
+
+This needs the [GitHub CLI](https://cli.github.com/) installed and signed in
+(`gh auth login`). The fix goes on a new `fixagent/...` branch, never on the
+branch you are on, and a pull request is only opened when the fix is verified.
+The repository must have no uncommitted changes.
+
 Measure the fix rate over all demo tasks:
 
 ```bash
@@ -113,15 +126,20 @@ Two workflows are in `.github/workflows/`:
 
 ## What is tested
 
-`python -m pytest` runs 48 tests offline. A scripted stand-in for the model
+`python -m pytest` runs 58 tests offline. A scripted stand-in for the model
 replays the tool calls a real model would make, which exercises the whole
 loop: the agent fixes all three demo bugs, and is correctly marked as failed
 when it makes a wrong fix, changes nothing, tries to edit the tests, or runs
 out of steps. The HTTP client and command line are tested against a local
-fake server.
+fake server. The pull request step is tested against a local git remote and
+a stand-in for the `gh` command.
 
 ## Not done yet
 
 - It has not been run with a real model. That needs an API key or a local model.
-- It writes a patch file. Opening a GitHub pull request is the next step.
+- The pull request step has not been run against the real GitHub API.
 - The evaluation covers three small demo bugs, not a public benchmark.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
