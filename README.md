@@ -5,6 +5,9 @@
 An AI agent that fixes bugs in Python, C++ and Rust repositories, with a
 React dashboard for watching it work.
 
+**Live site:** https://amitdas856.github.io/fixagent/ (project page with an
+interactive demo and a chatbot that answers questions about fixagent)
+
 ![The dashboard after fixing a Python bug in demo mode](docs/dashboard.png)
 
 You give it a repository and a bug report, or a GitHub issue number. It
