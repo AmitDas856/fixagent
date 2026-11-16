@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>fixagent: an AI agent that fixes bugs and proves it with the tests</title>
+<meta name="description" content="fixagent is an open-source AI agent that fixes bugs in Python, C++ and Rust repositories. A fix only counts if the tests fail before the agent runs and pass after it.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Newsreader:ital,opsz,wght@0,6..72,400..600;1,6..72,400..500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #F1F3F5;
+    --paper-deep: #E3E7EB;
+    --ink: #17202B;
+    --ink-soft: #4C5866;
+    --fail: #C4301C;
+    --pass: #12754A;
+    --pass-wash: #DDEEE4;
+    --file: #2A4B9A;
+    --display: "Bricolage Grotesque", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+    --body: "Newsreader", Georgia, "Times New Roman", serif;
+    --code: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    --gutter: clamp(1.25rem, 5vw, 5rem);
+    --measure: 62ch;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: clamp(1.0625rem, 0.95rem + 0.45vw, 1.3125rem);
+    line-height: 1.55;
+    font-optical-sizing: auto;
+  }
+  a { color: inherit; }
+  a:focus-visible, button:focus-visible {
+    outline: 3px solid var(--file);
+    outline-offset: 3px;
+  }
+  code, pre { font-family: var(--code); }
+  h1, h2, h3, p, ol, ul, dl, dd, figure { margin: 0; }
+  ol, ul { padding: 0; list-style: none; }
+
+  .wrap { padding-inline: var(--gutter); max-width: 96rem; margin-inline: auto; }
+
+  /* ---------- masthead ---------- */
+  .masthead {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 1.5rem; flex-wrap: wrap;
+    padding-block: 1.25rem;
+    border-bottom: 3px solid var(--ink);
+  }
+  .wordmark {
+    font-family: var(--code); font-size: 1.35rem; font-weight: 600;
+    text-decoration: none; letter-spacing: -0.02em;
+  }
+  .masthead nav { display: flex; gap: clamp(1rem, 2.5vw, 2.25rem); flex-wrap: wrap; }
+  .masthead nav a {
+    font-family: var(--display); font-weight: 600; font-size: 1rem;
+    text-decoration: none; padding-block: 0.25rem;
+    border-bottom: 2px solid transparent;
+  }
+  .masthead nav a:hover { border-bottom-color: var(--ink); }
+
+  /* ---------- hero: the headline is a diff ---------- */
+  .hero { padding-block: clamp(2.5rem, 7vw, 6.5rem) clamp(3rem, 7vw, 6rem); }
+  .diff-head {
+    font-family: var(--display);
+    font-weight: 800;
+    font-stretch: 78%;
+    font-size: clamp(2.5rem, 9.4vw, 9.75rem);
+    line-height: 0.92;
+    letter-spacing: -0.035em;
+  }
+  .diff-line {
+    display: grid;
+    grid-template-columns: 0.75em 1fr;
+    align-items: baseline;
+    padding-block: 0.08em 0.12em;
+  }
+  .diff-line .sign { font-weight: 500; }
+  .diff-line.removed { color: var(--fail); }
+  .diff-line.removed .text {
+    text-decoration: line-through;
+    text-decoration-thickness: 0.075em;
+    text-decoration-color: currentColor;
+  }
+  .diff-line.added {
+    color: var(--pass);
+    background: var(--pass-wash);
+    margin-inline: calc(var(--gutter) * -1);
+    padding-inline: var(--gutter);
+  }
+  .hero-foot {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2rem;
+    margin-top: clamp(2rem, 4.5vw, 3.75rem);
+  }
+  .lede { font-size: 1.3em; line-height: 1.38; max-width: 34ch; }
+  .actions { display: flex; gap: 0.875rem; flex-wrap: wrap; align-items: center; }
+  .btn {
+    display: inline-block;
+    font-family: var(--display); font-weight: 700; font-size: 1.0625rem;
+    padding: 0.85em 1.4em;
+    border: 2px solid var(--ink);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .btn-solid { background: var(--ink); color: var(--paper); }
+  .btn-solid:hover { background: var(--pass); border-color: var(--pass); }
+  .btn-line { background: transparent; color: var(--ink); }
+  .btn-line:hover { background: var(--ink); color: var(--paper); }
+  @media (min-width: 60rem) {
+    .hero-foot { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); align-items: end; }
+    .actions { justify-content: flex-end; }
+  }
+
+  /* one orchestrated load moment: the claim is struck, the proof arrives */
+  @media (prefers-reduced-motion: no-preference) {
+    .diff-line.removed .text {
+      text-decoration-color: transparent;
+      animation: strike 0.4s ease-out 0.5s forwards;
+    }
+    .diff-line.added {
+      clip-path: inset(0 100% 0 0);
+      animation: reveal 0.7s cubic-bezier(.7,0,.2,1) 1.05s forwards;
+    }
+    @keyframes strike { to { text-decoration-color: currentColor; } }
+    @keyframes reveal { to { clip-path: inset(0 0 0 0); } }
+  }
+
+  /* ---------- shared section pieces ---------- */
+  .band { padding-block: clamp(3.5rem, 8vw, 7.5rem); }
+  .band-head {
+    font-family: var(--display);
+    font-weight: 800; font-stretch: 82%;
+    font-size: clamp(2rem, 5.2vw, 4.75rem);
+    line-height: 0.98; letter-spacing: -0.028em;
+    max-width: 16ch;
+  }
+  .band-intro { max-width: var(--measure); margin-top: 1.25rem; color: var(--ink-soft); }
+
+  /* ---------- the run ---------- */
+  .run { border-top: 3px solid var(--ink); }
+  .run-grid {
+    display: grid; grid-template-columns: minmax(0, 1fr);
+    gap: clamp(2rem, 5vw, 4.5rem);
+    margin-top: clamp(2rem, 4.5vw, 3.5rem);
+  }
+  @media (min-width: 62rem) {
+    .run-grid { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); align-items: start; }
+  }
+  .report {
+    border-left: 6px solid var(--fail);
+    padding-left: 1.25rem;
+  }
+  .report-name { font-family: var(--code); font-size: 0.95rem; font-weight: 600; }
+  .report p { margin-top: 0.5rem; max-width: 46ch; }
+
+  .steps { margin-top: 2.25rem; counter-reset: step; }
+  .steps li {
+    counter-increment: step;
+    display: grid; grid-template-columns: 3.25rem 1fr; align-items: baseline;
+    padding-block: 0.7rem;
+    border-top: 1px solid var(--paper-deep);
+    font-family: var(--display); font-weight: 700;
+    font-size: clamp(1.25rem, 2.1vw, 1.75rem);
+    line-height: 1.15;
+  }
+  .steps li::before {
+    content: counter(step);
+    font-weight: 400; color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+  }
+  .steps .result { font-size: 0.68em; font-weight: 700; margin-left: 0.6em; white-space: nowrap; }
+  .steps .result.is-fail { color: var(--fail); }
+  .steps .result.is-pass { color: var(--pass); }
+  .steps .file { font-family: var(--code); font-size: 0.62em; font-weight: 500; color: var(--file); margin-left: 0.6em; }
+
+  .patch {
+    background: #fff;
+    border: 2px solid var(--ink);
+    overflow-x: auto;
+  }
+  .patch pre { margin: 0; padding: 1.1rem 0; font-size: clamp(0.78rem, 0.7rem + 0.3vw, 0.95rem); line-height: 1.7; min-width: max-content; }
+  .patch span { display: block; padding-inline: 1.25rem; }
+  .patch .meta { color: var(--ink-soft); }
+  .patch .hunk { color: var(--file); }
+  .patch .add { background: var(--pass-wash); color: var(--pass); font-weight: 600; }
+
+  .verdict {
+    display: grid; grid-template-columns: auto 1fr; gap: 1.5rem; align-items: center;
+    margin-top: 1.5rem;
+  }
+  .stamp {
+    font-family: var(--code); font-weight: 700;
+    font-size: clamp(1.5rem, 3vw, 2.25rem);
+    color: var(--pass);
+    border: 3px double var(--pass);
+    padding: 0.2em 0.65em;
+    transform: rotate(-3deg);
+  }
+  .verdict p { max-width: 36ch; }
+  .verdict small { display: block; color: var(--ink-soft); font-size: 0.82em; margin-top: 0.25rem; }
+
+  /* ---------- rules ---------- */
+  .rules { background: var(--ink); color: var(--paper); }
+  .rules .band-intro { color: #B4BDC8; }
+  .rule-list { margin-top: clamp(2rem, 5vw, 4rem); }
+  .rule-list li {
+    font-family: var(--display); font-weight: 700; font-stretch: 85%;
+    font-size: clamp(1.5rem, 4vw, 3.5rem);
+    line-height: 1.05; letter-spacing: -0.02em;
+    padding-block: 0.5em;
+    border-top: 1px solid #3A4654;
+    max-width: 24ch;
+  }
+  .rule-list li span {
+    display: block;
+    font-family: var(--body); font-weight: 400; font-stretch: 100%;
+    font-size: clamp(1.0625rem, 0.95rem + 0.45vw, 1.3125rem);
+    line-height: 1.5; letter-spacing: 0;
+    color: #B4BDC8;
+    margin-top: 0.5rem;
+    max-width: 52ch;
+  }
+  .caution {
+    margin-top: 2.5rem; max-width: var(--measure);
+    border-left: 6px solid #E9A13B; padding-left: 1.25rem;
+  }
+
+  /* ---------- parts ---------- */
+  .parts-grid {
+    display: grid; grid-template-columns: minmax(0, 1fr); gap: clamp(2rem, 5vw, 4.5rem);
+    margin-top: clamp(2rem, 4.5vw, 3.5rem);
+  }
+  @media (min-width: 62rem) {
+    .parts-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  .part h3 {
+    font-family: var(--display); font-weight: 800; font-stretch: 80%;
+    font-size: clamp(2.5rem, 5vw, 4.25rem); line-height: 0.95; letter-spacing: -0.03em;
+    padding-bottom: 0.3em; border-bottom: 3px solid var(--ink);
+  }
+  .part p { margin-top: 1rem; max-width: 40ch; }
+  .part ul { margin-top: 1rem; }
+  .part li { padding-block: 0.4rem; border-top: 1px solid var(--paper-deep); display: flex; flex-direction: column; gap: 0.1rem; }
+  .part li code { font-size: 0.78em; color: var(--ink-soft); }
+
+  .bugs { margin-top: clamp(3rem, 6vw, 5rem); overflow-x: auto; }
+  .bugs table { border-collapse: collapse; width: 100%; min-width: 34rem; }
+  .bugs caption {
+    text-align: left; font-family: var(--display); font-weight: 700; font-size: 1.35em;
+    padding-bottom: 0.75rem;
+  }
+  .bugs th, .bugs td { text-align: left; padding: 0.7rem 1.25rem 0.7rem 0; border-top: 1px solid var(--ink); vertical-align: baseline; }
+  .bugs th { font-family: var(--display); font-weight: 600; font-size: 0.85em; color: var(--ink-soft); }
+  .bugs td code { font-size: 0.85em; }
+
+  /* ---------- run it ---------- */
+  .start { background: var(--paper-deep); }
+  .commands { margin-top: clamp(2rem, 4.5vw, 3.5rem); display: grid; gap: 2.5rem; }
+  .command { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+  @media (min-width: 62rem) {
+    .command { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: clamp(2rem, 5vw, 4.5rem); align-items: start; }
+  }
+  .command h3 { font-family: var(--display); font-weight: 700; font-size: 1.5em; line-height: 1.15; }
+  .command p { margin-top: 0.5rem; color: var(--ink-soft); max-width: 44ch; }
+  .shell { position: relative; background: var(--ink); color: #E8ECF0; }
+  .shell pre { margin: 0; padding: 1.25rem 1.25rem 1.4rem; overflow-x: auto; font-size: clamp(0.78rem, 0.7rem + 0.3vw, 0.92rem); line-height: 1.7; }
+  .shell .note { color: #8E9AA8; }
+  .copy {
+    position: absolute; top: 0; right: 0;
+    font-family: var(--display); font-weight: 600; font-size: 0.85rem;
+    background: var(--paper); color: var(--ink);
+    border: 2px solid var(--ink); padding: 0.35em 0.8em; cursor: pointer;
+  }
+  .copy:hover { background: var(--pass-wash); }
+  .shell pre { padding-top: 2.75rem; }
+
+  /* ---------- status ---------- */
+  .status-grid {
+    display: grid; grid-template-columns: minmax(0, 1fr); gap: clamp(2rem, 5vw, 4.5rem);
+    margin-top: clamp(2rem, 4.5vw, 3.5rem);
+  }
+  @media (min-width: 62rem) { .status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .status-col h3 {
+    font-family: var(--display); font-weight: 700; font-size: 1.5em;
+    padding-bottom: 0.6rem; border-bottom: 3px solid currentColor;
+  }
+  .status-col.done h3 { color: var(--pass); }
+  .status-col.todo h3 { color: var(--fail); }
+  .status-col li { padding-block: 0.75rem; border-bottom: 1px solid var(--paper-deep); max-width: 52ch; }
+
+  /* ---------- footer ---------- */
+  .closing { border-top: 3px solid var(--ink); padding-block: clamp(3rem, 7vw, 6rem) 2.5rem; }
+  .closing .band-head { max-width: 14ch; }
+  .closing .actions { justify-content: flex-start; margin-top: 2rem; }
+  .colophon {
+    margin-top: clamp(3rem, 6vw, 5rem); padding-top: 1.25rem; border-top: 1px solid var(--ink);
+    display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+    font-size: 0.9em; color: var(--ink-soft);
+  }
+
+  /* ---------- bug picker and replay ---------- */
+  .picker { display: flex; flex-wrap: wrap; gap: 0; margin-top: clamp(2rem, 4.5vw, 3.5rem); border: 2px solid var(--ink); width: fit-content; max-width: 100%; }
+  .pick {
+    font-family: var(--display); font-weight: 700; font-size: 1.15rem; text-align: left;
+    background: transparent; color: var(--ink); border: 0; border-right: 2px solid var(--ink);
+    padding: 0.7rem 1.4rem 0.75rem; cursor: pointer;
+  }
+  .pick:last-child { border-right: 0; }
+  .pick span { display: block; font-family: var(--code); font-weight: 400; font-size: 0.72rem; margin-top: 0.15rem; opacity: 0.75; }
+  .pick:hover { background: var(--paper-deep); }
+  .pick[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+  .picker + .run-grid { margin-top: 2rem; }
+  @media (max-width: 34rem) {
+    .picker { width: 100%; flex-direction: column; }
+    .pick { border-right: 0; border-bottom: 2px solid var(--ink); }
+    .pick:last-child { border-bottom: 0; }
+  }
+  .replay { margin-top: 1.75rem; }
+  .replay[disabled] { opacity: 0.55; cursor: default; }
+  .steps li { transition: opacity 0.25s; }
+  .steps li.is-waiting { opacity: 0.22; }
+  .steps li.is-waiting .result, .steps li.is-waiting .file { visibility: hidden; }
+  .steps li.is-now { opacity: 1; }
+  .steps li.is-now::before { color: var(--file); font-weight: 800; }
+  .patch .del { background: #F6DDD8; color: var(--fail); }
+  .patch .is-hidden { display: none; }
+  .verdict.is-hidden { visibility: hidden; }
+  @media (prefers-reduced-motion: no-preference) {
+    .verdict.is-landing .stamp { animation: slam 0.32s cubic-bezier(.2,1.4,.4,1); }
+    @keyframes slam { from { transform: rotate(-9deg) scale(2.1); opacity: 0; } to { transform: rotate(-3deg) scale(1); opacity: 1; } }
+  }
+
+  /* ---------- chatbot ---------- */
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .chat-open {
+    position: fixed; right: clamp(0.75rem, 2.5vw, 2rem); bottom: clamp(0.75rem, 2.5vw, 2rem); z-index: 20;
+    font-family: var(--display); font-weight: 700; font-size: 1.0625rem;
+    background: var(--pass); color: #fff; border: 2px solid var(--ink);
+    padding: 0.8em 1.25em; cursor: pointer;
+    box-shadow: 5px 5px 0 var(--ink);
+  }
+  .chat-open:hover { transform: translate(-1px, -1px); box-shadow: 6px 6px 0 var(--ink); }
+  .chat-open[aria-expanded="true"] { display: none; }
+  .chat {
+    position: fixed; right: clamp(0.75rem, 2.5vw, 2rem); bottom: clamp(0.75rem, 2.5vw, 2rem); z-index: 30;
+    width: min(25rem, calc(100vw - 1.5rem)); height: min(36rem, calc(100vh - 1.5rem)); height: min(36rem, calc(100dvh - 1.5rem));
+    display: flex; flex-direction: column;
+    background: var(--paper); color: var(--ink);
+    border: 2px solid var(--ink); box-shadow: 8px 8px 0 var(--ink);
+    font-size: 1rem;
+  }
+  .chat[hidden] { display: none; }
+  .chat-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; padding: 1rem 1rem 0.9rem; background: var(--ink); color: var(--paper); }
+  .chat-top h2 { font-family: var(--display); font-weight: 800; font-size: 1.35rem; line-height: 1.1; }
+  .chat-top p { font-size: 0.85rem; line-height: 1.35; color: #B4BDC8; margin-top: 0.3rem; }
+  .chat-close { font-family: var(--display); font-weight: 600; font-size: 0.85rem; background: transparent; color: var(--paper); border: 2px solid var(--paper); padding: 0.3em 0.7em; cursor: pointer; }
+  .chat-close:hover { background: var(--paper); color: var(--ink); }
+  .chat-close:focus-visible, .chat-top a:focus-visible { outline-color: #9DB7FF; }
+  .chat-log { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.7rem; }
+  .msg { flex: none; max-width: 88%; padding: 0.6rem 0.8rem; line-height: 1.42; white-space: pre-line; overflow-wrap: anywhere; }
+  .msg.bot { align-self: flex-start; background: #fff; border: 1px solid var(--ink); }
+  .msg.you { align-self: flex-end; background: var(--ink); color: var(--paper); font-family: var(--display); font-weight: 500; }
+  .msg a { color: var(--file); font-weight: 600; }
+  .chat-chips { display: flex; gap: 0.4rem; padding: 0 1rem 0.75rem; overflow-x: auto; }
+  .chip { flex: none; font-family: var(--display); font-weight: 600; font-size: 0.85rem; background: var(--pass-wash); color: var(--pass); border: 1px solid var(--pass); padding: 0.4em 0.75em; cursor: pointer; }
+  .chip:hover { background: var(--pass); color: #fff; }
+  .chat-form { display: flex; border-top: 2px solid var(--ink); }
+  .chat-form input { flex: 1; min-width: 0; font: inherit; font-family: var(--display); padding: 0.85rem 1rem; border: 0; background: #fff; color: var(--ink); }
+  .chat-form input:focus-visible { outline: 3px solid var(--file); outline-offset: -3px; }
+  .chat-form button { font-family: var(--display); font-weight: 700; font-size: 1rem; background: var(--ink); color: var(--paper); border: 0; padding: 0 1.25rem; cursor: pointer; }
+  .chat-form button:hover { background: var(--pass); }
+  .closing { padding-bottom: 6rem; }
+</style>
+</head>
+<body>
+
+<header class="wrap">
+  <div class="masthead">
+    <a class="wordmark" href="#top">fixagent</a>
+    <nav aria-label="Sections">
+      <a href="#run">A fix, step by step</a>
+      <a href="#rules">Safety rules</a>
+      <a href="#start">Run it</a>
+      <a href="https://github.com/AmitDas856/fixagent">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <section class="hero wrap">
+    <h1 class="diff-head" aria-label="Not: the model says it's fixed. Instead: the tests say it's fixed.">
+      <span class="diff-line removed" aria-hidden="true"><span class="sign">&minus;</span><span class="text">The model says it&rsquo;s fixed.</span></span>
+      <span class="diff-line added" aria-hidden="true"><span class="sign">+</span><span class="text">The tests say it&rsquo;s fixed.</span></span>
+    </h1>
+    <div class="hero-foot">
+      <p class="lede">fixagent is an AI agent that fixes bugs in Python, C++ and Rust repositories. A fix only counts if the tests fail before it runs and pass after.</p>
+      <div class="actions">
+        <a class="btn btn-solid" href="https://github.com/AmitDas856/fixagent">View the code on GitHub</a>
+        <a class="btn btn-line" href="#start">Run the demo</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="run band" id="run">
+    <div class="wrap">
+      <h2 class="band-head">One bug, from report to patch.</h2>
+      <p class="band-intro">Give fixagent a repository and a bug report, or a GitHub issue number. It explores the code, runs the tests, edits the source and runs the tests again. Pick one of the demo bugs and replay the fix, step by step.</p>
+
+      <div class="picker" role="group" aria-label="Choose a demo bug">
+        <button type="button" class="pick" data-bug="py" aria-pressed="true">Python<span>py_stats_median</span></button>
+        <button type="button" class="pick" data-bug="cpp" aria-pressed="false">C++<span>cpp_strutil_trim</span></button>
+        <button type="button" class="pick" data-bug="rs" aria-pressed="false">Rust<span>rs_wordcount_spaces</span></button>
+      </div>
+
+      <div class="run-grid">
+        <div>
+          <div class="report">
+            <div class="report-name" id="bug-name">py_stats_median</div>
+            <p id="bug-issue">median() returns the wrong value for lists with an even number of items. median([4, 1, 3, 2]) returns 3, but the median should be 2.5.</p>
+          </div>
+          <ol class="steps" id="steps">
+            <li class="is-done"><span>Run tests<span class="result is-fail">Tests fail</span></span></li>
+            <li class="is-done"><span>Read file<span class="file">stats.py</span></span></li>
+            <li class="is-done"><span>Edit file<span class="file">stats.py</span></span></li>
+            <li class="is-done"><span>Run tests<span class="result is-pass">Tests pass</span></span></li>
+            <li class="is-done"><span>Finish</span></li>
+          </ol>
+          <button type="button" class="btn btn-solid replay" id="replay">Replay the fix</button>
+        </div>
+
+        <div>
+          <figure class="patch" aria-label="The patch fixagent produced">
+<pre id="patch"><span class="meta">--- a/stats.py</span><span class="meta">+++ b/stats.py</span><span class="hunk">@@ -12,6 +12,8 @@</span><span>         raise ValueError("median of empty list")</span><span>     ordered = sorted(values)</span><span>     middle = len(ordered) // 2</span><span class="add">+    if len(ordered) % 2 == 0:</span><span class="add">+        return (ordered[middle - 1] + ordered[middle]) / 2</span><span>     return ordered[middle]</span></pre>
+          </figure>
+          <div class="verdict" id="verdict">
+            <div class="stamp">Fixed</div>
+            <p>The tests failed before the agent ran and pass now.
+              <small><span id="bug-note">Agent&rsquo;s note: Averaged the two middle values.</span> Shown in demo mode, which replays a scripted model rather than a real one.</small>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="rules band" id="rules">
+    <div class="wrap">
+      <h2 class="band-head">It can&rsquo;t cheat its way to green.</h2>
+      <p class="band-intro">An agent that edits code and runs commands needs limits. These are built into the tools, so the model cannot talk its way around them.</p>
+      <ul class="rule-list">
+        <li>It works on a copy.<span>Your repository is never modified.</span></li>
+        <li>Every path stays inside that copy.<span>Symlinks included.</span></li>
+        <li>Test files are read-only.<span>The agent cannot pass by weakening a test.</span></li>
+        <li>Commands come from a short allowlist.<span>They run without a shell and with a timeout.</span></li>
+        <li>The model&rsquo;s claim of success is ignored.<span>The runner re-runs the tests itself.</span></li>
+      </ul>
+      <p class="caution">fixagent still runs the repository&rsquo;s own build and test code. For code you do not trust, run it inside a container or virtual machine.</p>
+    </div>
+  </section>
+
+  <section class="band" id="parts">
+    <div class="wrap">
+      <h2 class="band-head">Three languages, no heavy dependencies.</h2>
+      <div class="parts-grid">
+        <div class="part">
+          <h3>Python</h3>
+          <p>The agent loop, the tools, the verifier and the dashboard&rsquo;s API server. No third-party runtime dependencies.</p>
+          <ul>
+            <li>Agent loop <code>fixagent/agent.py</code></li>
+            <li>Tools and sandbox rules <code>fixagent/tools.py</code></li>
+            <li>Run and verify one issue <code>fixagent/runner.py</code></li>
+            <li>Open a pull request <code>fixagent/pullrequest.py</code></li>
+            <li>Fix-rate evaluation <code>fixagent/evaluate.py</code></li>
+          </ul>
+        </div>
+        <div class="part">
+          <h3>Rust</h3>
+          <p>A small command-line tool that gives the agent fast code search. It uses only the standard library, and the agent falls back to Python without it.</p>
+          <ul>
+            <li>Fast code search <code>tools/codesearch/</code></li>
+          </ul>
+        </div>
+        <div class="part">
+          <h3>React</h3>
+          <p>A TypeScript dashboard that shows each bug, the agent&rsquo;s steps as they happen, the verdict and the patch.</p>
+          <ul>
+            <li>Dashboard <code>dashboard/</code></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="bugs">
+        <table>
+          <caption>The demo bugs it ships with</caption>
+          <thead><tr><th scope="col">Task</th><th scope="col">Language</th><th scope="col">Bug</th></tr></thead>
+          <tbody>
+            <tr><td><code>py_stats_median</code></td><td>Python</td><td><code>median</code> is wrong for even-length lists</td></tr>
+            <tr><td><code>cpp_strutil_trim</code></td><td>C++</td><td><code>trim</code> cuts off the last character</td></tr>
+            <tr><td><code>rs_wordcount_spaces</code></td><td>Rust</td><td><code>word_count</code> miscounts repeated spaces, tabs and newlines</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="start band" id="start">
+    <div class="wrap">
+      <h2 class="band-head">Run it on your machine.</h2>
+      <p class="band-intro">You need Python 3.10 or newer. The C++ and Rust demos also need <code>g++</code>, <code>make</code> and <code>cargo</code>.</p>
+
+      <div class="commands">
+        <div class="command">
+          <div>
+            <h3>Get the code and run the tests</h3>
+            <p>The tests run offline and need no API key.</p>
+          </div>
+          <div class="shell">
+            <button class="copy" type="button">Copy</button>
+<pre>git clone https://github.com/AmitDas856/fixagent.git
+cd fixagent
+pip install pytest
+python -m pytest</pre>
+          </div>
+        </div>
+
+        <div class="command">
+          <div>
+            <h3>Watch it in the dashboard</h3>
+            <p>With no model settings the server starts in demo mode and replays a scripted model for the demo bugs. Needs Node.js 20 or newer. Then open http://127.0.0.1:8000.</p>
+          </div>
+          <div class="shell">
+            <button class="copy" type="button">Copy</button>
+<pre>cd dashboard
+npm install
+npm run build
+cd ..
+python -m fixagent.server --tasks demo_repos/tasks.json</pre>
+          </div>
+        </div>
+
+        <div class="command">
+          <div>
+            <h3>Fix one bug with a real model</h3>
+            <p>fixagent talks to any server with an OpenAI-style <code>/chat/completions</code> endpoint that supports tool calling, including a local model through Ollama.</p>
+          </div>
+          <div class="shell">
+            <button class="copy" type="button">Copy</button>
+<pre>export FIXAGENT_BASE_URL="https://your-provider.example/v1"
+export FIXAGENT_MODEL="your-model-name"
+export FIXAGENT_API_KEY="your-key"
+
+python -m fixagent \
+  --repo demo_repos/cpp_strutil \
+  --issue 'trim("  hello  ") returns "hell" instead of "hello"' \
+  --out fix.patch --log run.jsonl</pre>
+          </div>
+        </div>
+
+        <div class="command">
+          <div>
+            <h3>Fix a GitHub issue and open a pull request</h3>
+            <p>Needs the GitHub CLI, signed in. The fix goes on a new <code>fixagent/...</code> branch, and a pull request is only opened when the fix is verified.</p>
+          </div>
+          <div class="shell">
+            <button class="copy" type="button">Copy</button>
+<pre>python -m fixagent --repo path/to/your/checkout \
+  --github-issue 12 --open-pr</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="status">
+    <div class="wrap">
+      <h2 class="band-head">What is tested, and what is not yet.</h2>
+      <p class="band-intro">A tool that only trusts evidence should be clear about its own.</p>
+      <div class="status-grid">
+        <div class="status-col done">
+          <h3>Tested</h3>
+          <ul>
+            <li>68 tests run offline, using a scripted stand-in for the model that replays the tool calls a real model would make.</li>
+            <li>The agent fixes all three demo bugs in that setup.</li>
+            <li>It is correctly marked as failed when it makes a wrong fix, changes nothing, tries to edit the tests or runs out of steps.</li>
+            <li>The pull request step is tested against a local git remote. The dashboard&rsquo;s API server is tested over real HTTP.</li>
+          </ul>
+        </div>
+        <div class="status-col todo">
+          <h3>Not done yet</h3>
+          <ul>
+            <li>It has not been run with a real model. That needs an API key or a local model.</li>
+            <li>The pull request step has not been run against the real GitHub API.</li>
+            <li>The evaluation covers three small demo bugs, not a public benchmark.</li>
+            <li>The dashboard has no automated browser tests, and the experimental Hack support has not been run with HHVM.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="wrap closing">
+  <h2 class="band-head">Read the code. Break a test. Watch it get fixed.</h2>
+  <div class="actions">
+    <a class="btn btn-solid" href="https://github.com/AmitDas856/fixagent">View the code on GitHub</a>
+  </div>
+  <div class="colophon">
+    <span>fixagent is open source under the MIT licence.</span>
+    <span>Built by <a href="https://github.com/AmitDas856">Amit Das</a></span>
+  </div>
+</footer>
+
+<button type="button" class="chat-open" id="chat-open" aria-expanded="false" aria-controls="chat">Ask about fixagent</button>
+
+<section class="chat" id="chat" role="dialog" aria-label="Ask about fixagent" hidden>
+  <header class="chat-top">
+    <div>
+      <h2>Ask about fixagent</h2>
+      <p>Answers come from the project README. This is not a live AI model.</p>
+    </div>
+    <button type="button" class="chat-close" id="chat-close" aria-label="Close chat">Close</button>
+  </header>
+  <div class="chat-log" id="chat-log" aria-live="polite"></div>
+  <div class="chat-chips" id="chat-chips"></div>
+  <form class="chat-form" id="chat-form">
+    <label class="sr-only" for="chat-input">Your question</label>
+    <input id="chat-input" type="text" autocomplete="off" placeholder="Type a question" maxlength="200">
+    <button type="submit">Send</button>
+  </form>
+</section>
+
+<script>
+  document.querySelectorAll('.copy').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var text = button.parentElement.querySelector('pre').textContent;
+      var done = function (label) {
+        button.textContent = label;
+        setTimeout(function () { button.textContent = 'Copy'; }, 1600);
+      };
+      try {
+        navigator.clipboard.writeText(text).then(
+          function () { done('Copied'); },
+          function () { done('Select and copy'); }
+        );
+      } catch (e) { done('Select and copy'); }
+    });
+  });
+  /* ---------- demo bug player ---------- */
+  (function () {
+    var BUGS = {
+      py: {
+        name: 'py_stats_median', file: 'stats.py',
+        issue: 'median() returns the wrong value for lists with an even number of items. median([4, 1, 3, 2]) returns 3, but the median should be 2.5.',
+        note: 'Averaged the two middle values.',
+        patch: [
+          ['meta', '--- a/stats.py'], ['meta', '+++ b/stats.py'], ['hunk', '@@ -12,6 +12,8 @@'],
+          ['', '         raise ValueError("median of empty list")'],
+          ['', '     ordered = sorted(values)'],
+          ['', '     middle = len(ordered) // 2'],
+          ['add', '+    if len(ordered) % 2 == 0:'],
+          ['add', '+        return (ordered[middle - 1] + ordered[middle]) / 2'],
+          ['', '     return ordered[middle]']
+        ]
+      },
+      cpp: {
+        name: 'cpp_strutil_trim', file: 'strutil.cpp',
+        issue: 'strutil::trim cuts off the last character of the text. trim("  hello  ") returns "hell" instead of "hello", and trim("x") returns an empty string.',
+        note: 'Fixed off-by-one in substr length.',
+        patch: [
+          ['meta', '--- a/strutil.cpp'], ['meta', '+++ b/strutil.cpp'], ['hunk', '@@ -12,4 +12,4 @@'],
+          ['', '     }'],
+          ['', '     const std::size_t last = text.find_last_not_of(whitespace);'],
+          ['del', '-    return text.substr(first, last - first);'],
+          ['add', '+    return text.substr(first, last - first + 1);'],
+          ['', ' }']
+        ]
+      },
+      rs: {
+        name: 'rs_wordcount_spaces', file: 'src/lib.rs',
+        issue: 'word_count gives wrong results when words are separated by more than one space, or by tabs or newlines. word_count("the  quick   brown fox") returns 7 instead of 4.',
+        note: 'Split on any whitespace.',
+        patch: [
+          ['meta', '--- a/src/lib.rs'], ['meta', '+++ b/src/lib.rs'], ['hunk', '@@ -5,4 +5,4 @@'],
+          ['', ' /// Count the words in a piece of text. Words are separated by whitespace.'],
+          ['', ' pub fn word_count(text: &str) -> usize {'],
+          ['del', "-    text.split(' ').count()"],
+          ['add', '+    text.split_whitespace().count()'],
+          ['', ' }']
+        ]
+      }
+    };
+
+    var stepsEl = document.getElementById('steps');
+    var patchEl = document.getElementById('patch');
+    var verdictEl = document.getElementById('verdict');
+    var replayBtn = document.getElementById('replay');
+    var picks = document.querySelectorAll('.pick');
+    var current = 'py';
+    var timers = [];
+    var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    function el(tag, cls, text) {
+      var n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text != null) n.textContent = text;
+      return n;
+    }
+    function stepRow(label, extraCls, extraText) {
+      var li = el('li'), wrap = el('span', '', label);
+      if (extraText) wrap.appendChild(el('span', extraCls, extraText));
+      li.appendChild(wrap);
+      return li;
+    }
+    function draw(key) {
+      var bug = BUGS[key];
+      current = key;
+      document.getElementById('bug-name').textContent = bug.name;
+      document.getElementById('bug-issue').textContent = bug.issue;
+      document.getElementById('bug-note').textContent = 'Agent’s note: ' + bug.note;
+      stepsEl.textContent = '';
+      stepsEl.appendChild(stepRow('Run tests', 'result is-fail', 'Tests fail'));
+      stepsEl.appendChild(stepRow('Read file', 'file', bug.file));
+      stepsEl.appendChild(stepRow('Edit file', 'file', bug.file));
+      stepsEl.appendChild(stepRow('Run tests', 'result is-pass', 'Tests pass'));
+      stepsEl.appendChild(stepRow('Finish'));
+      patchEl.textContent = '';
+      bug.patch.forEach(function (line) { patchEl.appendChild(el('span', line[0], line[1])); });
+      picks.forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.bug === key)); });
+    }
+    function stop() {
+      timers.forEach(clearTimeout); timers = [];
+      replayBtn.disabled = false; replayBtn.textContent = 'Replay the fix';
+    }
+    function showFinal() {
+      stepsEl.querySelectorAll('li').forEach(function (li) { li.className = 'is-done'; });
+      patchEl.querySelectorAll('.is-hidden').forEach(function (n) { n.classList.remove('is-hidden'); });
+      verdictEl.classList.remove('is-hidden');
+    }
+    function play() {
+      stop();
+      if (still) { showFinal(); return; }
+      var rows = stepsEl.querySelectorAll('li');
+      rows.forEach(function (li) { li.className = 'is-waiting'; });
+      patchEl.querySelectorAll('.add, .del').forEach(function (n) { n.classList.add('is-hidden'); });
+      verdictEl.classList.add('is-hidden');
+      verdictEl.classList.remove('is-landing');
+      replayBtn.disabled = true; replayBtn.textContent = 'Running';
+      rows.forEach(function (li, i) {
+        timers.push(setTimeout(function () {
+          if (i > 0) rows[i - 1].className = 'is-done';
+          li.className = 'is-now';
+          if (i === 2) patchEl.querySelectorAll('.is-hidden').forEach(function (n) { n.classList.remove('is-hidden'); });
+          if (i === 4) {
+            li.className = 'is-done';
+            verdictEl.classList.remove('is-hidden');
+            verdictEl.classList.add('is-landing');
+            stop();
+          }
+        }, 350 + i * 750));
+      });
+    }
+    picks.forEach(function (b) {
+      b.addEventListener('click', function () { stop(); draw(b.dataset.bug); play(); });
+    });
+    replayBtn.addEventListener('click', play);
+  })();
+
+  /* ---------- chatbot: answers written from the README ---------- */
+  (function () {
+    var REPO = 'https://github.com/AmitDas856/fixagent';
+    var TOPICS = [
+      { chip: 'What does it do?',
+        keys: ['what is fixagent', 'what is this', 'what is it', 'what does', 'what do', 'what s fixagent', 'purpose', 'explain fixagent', 'about fixagent', 'tell me about it', 'fixagent do', 'overview', 'summary'],
+        text: 'fixagent is an AI agent that fixes bugs in Python, C++ and Rust repositories.\n\nYou give it a repository and a bug report, or a GitHub issue number. It explores the code, runs the tests, edits the source, re-runs the tests, and hands back a patch or opens a pull request.' },
+      { chip: 'How is a fix checked?',
+        keys: ['check', 'verify', 'verif', 'prove', 'proof', 'trust', 'cheat', 'count', 'correct', 'really fixed', 'know it'],
+        text: 'The result is checked independently. A fix only counts if the tests fail before the agent runs and pass after it.\n\nThe model’s own claim of success is ignored: the runner re-runs the tests itself. Test files are read-only, so the agent cannot pass by weakening a test.' },
+      { chip: 'Is it safe to run?',
+        keys: ['safe', 'safety', 'secur', 'sandbox', 'danger', 'risk', 'modify my', 'delete', 'allowlist', 'symlink', 'container'],
+        text: 'Five rules are built into the tools:\n• It works on a copy. Your repository is never modified.\n• Every path must stay inside that copy, including through symlinks.\n• Test files are read-only.\n• Commands run without a shell, from a short allowlist, with a timeout.\n• The model’s claim of success is ignored.\n\nIt still runs the repository’s own build and test code, so use a container or virtual machine for code you do not trust.' },
+      { chip: 'How do I run it?',
+        keys: ['install', 'setup', 'set up', 'run it', 'how do i run', 'start', 'get started', 'clone', 'requirement', 'try it', 'use it', 'pytest'],
+        text: 'You need Python 3.10 or newer. Then:\n\ngit clone ' + REPO + '.git\ncd fixagent\npip install pytest\npython -m pytest\n\nThe tests run offline with no API key. The C++ and Rust demos also need g++, make and cargo. The “Run it” section of this page has every command.' },
+      { chip: 'Which models work?',
+        keys: ['model', 'llm', 'openai', 'ollama', 'api key', 'api', 'key', 'gpt', 'claude', 'provider', 'local'],
+        text: 'fixagent talks to any server with an OpenAI-style /chat/completions endpoint that supports tool calling.\n\nSet FIXAGENT_BASE_URL, FIXAGENT_MODEL and FIXAGENT_API_KEY. For a local model through Ollama, the base URL is http://localhost:11434/v1 and no key is needed.' },
+      { chip: 'What is tested?',
+        keys: ['tested', 'limit', 'not done', 'todo', 'benchmark', 'real model', 'fix rate', 'accuracy', 'results', 'how good', 'works with', 'status', 'production'],
+        text: '68 tests run offline using a scripted stand-in for the model, and the agent fixes all three demo bugs in that setup.\n\nNot done yet: it has not been run with a real model, the pull request step has not been run against the real GitHub API, and the evaluation covers three small demo bugs, not a public benchmark.' },
+      { keys: ['language', 'python', 'c++', 'cpp', 'rust', 'java', 'javascript', 'support', 'hack'],
+        text: 'It fixes bugs in Python, C++ and Rust repositories. There is also experimental support for Hack, which has not been run with HHVM yet.' },
+      { keys: ['pull request', ' pr', 'github issue', 'issue number', 'open-pr', 'gh ', 'branch'],
+        text: 'Run: python -m fixagent --repo path/to/your/checkout --github-issue 12 --open-pr\n\nThis needs the GitHub CLI installed and signed in. The fix goes on a new fixagent/... branch, never the branch you are on, and a pull request is only opened when the fix is verified. The repository must have no uncommitted changes.' },
+      { keys: ['dashboard', 'demo mode', 'demo', 'ui', 'interface', 'react', 'watch', 'node', 'web app'],
+        text: 'The dashboard is a React and TypeScript web app that shows each bug, the agent’s steps as they happen, the verdict and the patch. It needs Node.js 20 or newer.\n\nWith no model settings the server runs in demo mode: it replays a scripted model for the demo bugs and says so at the top.' },
+      { keys: ['built with', 'tech', 'stack', 'depend', 'made of', 'made with', 'written in', 'architecture', 'how it works', 'how does it work', 'tools', 'search'],
+        text: 'The agent loop, tools, verifier and dashboard API server are Python with no third-party runtime dependencies. Fast code search is a small Rust command-line tool that uses only the standard library. The dashboard is React and TypeScript.\n\nThe agent’s tools are list_files, read_file, search_code, edit_file, write_file, run_tests and run_command.' },
+      { keys: ['licen', 'free', 'open source', 'cost', 'price', 'pay'],
+        text: 'fixagent is open source under the MIT licence, so it is free to use.' },
+      { keys: ['who', 'author', 'creator', 'made by', 'built by', 'amit', 'contact', 'developer'],
+        text: 'fixagent was built by Amit Das. You can find him on GitHub as AmitDas856.' },
+      { keys: ['github action', 'actions', 'workflow', ' ci'],
+        text: 'Two GitHub Actions workflows are included. “Tests” runs on every push and needs no API key. “Run agent with a real model” is started by hand from the Actions tab after you add the three FIXAGENT_* settings as secrets.' },
+      { keys: ['hello', 'hi ', 'hey', 'yo ', 'good morning', 'good evening'],
+        text: 'Hello. Ask me what fixagent does, how a fix is checked, or how to run it.' },
+      { keys: ['thank', 'thanks', 'cheers'],
+        text: 'You’re welcome.' }
+    ];
+
+    var openBtn = document.getElementById('chat-open');
+    var panel = document.getElementById('chat');
+    var closeBtn = document.getElementById('chat-close');
+    var log = document.getElementById('chat-log');
+    var chips = document.getElementById('chat-chips');
+    var form = document.getElementById('chat-form');
+    var input = document.getElementById('chat-input');
+    var greeted = false;
+
+    function say(who, text, withLink) {
+      var m = document.createElement('div');
+      m.className = 'msg ' + who;
+      m.textContent = text;
+      if (withLink) {
+        var a = document.createElement('a');
+        a.href = REPO; a.textContent = 'Read the README on GitHub';
+        m.appendChild(document.createTextNode('\n'));
+        m.appendChild(a);
+      }
+      log.appendChild(m);
+      log.scrollTop = log.scrollHeight;
+    }
+    function answer(question) {
+      var q = ' ' + question.toLowerCase().replace(/[?!.,]/g, ' ') + ' ';
+      var best = null, bestScore = 0;
+      TOPICS.forEach(function (t) {
+        var score = 0;
+        t.keys.forEach(function (k) { if (q.indexOf(k) !== -1) score += k.length; });
+        if (score > bestScore) { bestScore = score; best = t; }
+      });
+      if (best) say('bot', best.text);
+      else say('bot', 'I don’t have an answer for that. I can only answer from the fixagent README, so try one of the suggested questions.', true);
+    }
+    function ask(question) {
+      question = question.trim();
+      if (!question) return;
+      say('you', question);
+      setTimeout(function () { answer(question); }, 250);
+    }
+    function open() {
+      panel.hidden = false;
+      openBtn.setAttribute('aria-expanded', 'true');
+      if (!greeted) {
+        greeted = true;
+        say('bot', 'Hello. I can answer questions about fixagent: what it does, how a fix is checked, and how to run it.');
+      }
+      input.focus();
+    }
+    function close() {
+      panel.hidden = true;
+      openBtn.setAttribute('aria-expanded', 'false');
+      openBtn.focus();
+    }
+    TOPICS.forEach(function (t) {
+      if (!t.chip) return;
+      var c = document.createElement('button');
+      c.type = 'button'; c.className = 'chip'; c.textContent = t.chip;
+      c.addEventListener('click', function () { ask(t.chip); });
+      chips.appendChild(c);
+    });
+    openBtn.addEventListener('click', open);
+    closeBtn.addEventListener('click', close);
+    panel.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      ask(input.value);
+      input.value = '';
+    });
+  })();
+</script>
+</body>
+</html>
