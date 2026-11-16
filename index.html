@@ -378,6 +378,8 @@
   .chat-form input:focus-visible { outline: 3px solid var(--file); outline-offset: -3px; }
   .chat-form button { font-family: var(--display); font-weight: 700; font-size: 1rem; background: var(--ink); color: var(--paper); border: 0; padding: 0 1.25rem; cursor: pointer; }
   .chat-form button:hover { background: var(--pass); }
+  .chat-form button[disabled] { opacity: 0.6; cursor: default; }
+  .msg.typing { color: var(--ink-soft); font-style: italic; }
   .closing { padding-bottom: 6rem; }
 </style>
 </head>
@@ -627,7 +629,7 @@ python -m fixagent \
   <header class="chat-top">
     <div>
       <h2>Ask about fixagent</h2>
-      <p>Answers come from the project README. This is not a live AI model.</p>
+      <p>An AI assistant that answers from the project README. It can make mistakes, so check the README for anything important.</p>
     </div>
     <button type="button" class="chat-close" id="chat-close" aria-label="Close chat">Close</button>
   </header>
@@ -840,7 +842,12 @@ python -m fixagent \
       log.appendChild(m);
       log.scrollTop = log.scrollHeight;
     }
-    function answer(question) {
+    var API = 'https://fixagent-chat.amitswork42.workers.dev/';
+    var history = [];
+    var busy = false;
+    var sendBtn = form.querySelector('button[type="submit"]');
+
+    function localAnswer(question) {
       var q = ' ' + question.toLowerCase().replace(/[?!.,]/g, ' ') + ' ';
       var best = null, bestScore = 0;
       TOPICS.forEach(function (t) {
@@ -848,14 +855,41 @@ python -m fixagent \
         t.keys.forEach(function (k) { if (q.indexOf(k) !== -1) score += k.length; });
         if (score > bestScore) { bestScore = score; best = t; }
       });
-      if (best) say('bot', best.text);
-      else say('bot', 'I don’t have an answer for that. I can only answer from the fixagent README, so try one of the suggested questions.', true);
+      if (best) { say('bot', best.text); return best.text; }
+      var none = 'I don’t have an answer for that. Try one of the suggested questions.';
+      say('bot', none, true);
+      return none;
     }
     function ask(question) {
       question = question.trim();
-      if (!question) return;
+      if (!question || busy) return;
       say('you', question);
-      setTimeout(function () { answer(question); }, 250);
+      history.push({ role: 'user', content: question });
+      var typing = document.createElement('div');
+      typing.className = 'msg bot typing';
+      typing.textContent = 'Thinking…';
+      log.appendChild(typing); log.scrollTop = log.scrollHeight;
+      busy = true; sendBtn.disabled = true;
+      var controller = window.AbortController ? new AbortController() : null;
+      var timer = setTimeout(function () { if (controller) controller.abort(); }, 15000);
+      fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: history.slice(-8) }),
+        signal: controller ? controller.signal : undefined
+      })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+        .then(function (data) {
+          if (!data || typeof data.reply !== 'string' || !data.reply.trim()) throw new Error('empty');
+          typing.remove();
+          say('bot', data.reply.trim());
+          history.push({ role: 'assistant', content: data.reply.trim() });
+        })
+        .catch(function () {
+          typing.remove();
+          history.push({ role: 'assistant', content: localAnswer(question) });
+        })
+        .then(function () { clearTimeout(timer); busy = false; sendBtn.disabled = false; });
     }
     function open() {
       panel.hidden = false;
